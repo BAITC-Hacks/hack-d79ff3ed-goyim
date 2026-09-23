@@ -157,6 +157,22 @@ class Matcher:
             reasons.append("hours")
         return reasons
 
+    @staticmethod
+    def parameter_match(row, q):
+        """Return the share of explicitly requested parameters satisfied by a profile."""
+        checks = [
+            row["city"] == q["city"],
+            q["category"] in row["categories"],
+            q["date"] not in row["busy_dates"],
+            q["event_format"] in row["event_formats"],
+            row["price_from_kzt"] <= q["budget"],
+        ]
+        if q["language"]:
+            checks.append(q["language"] in row["languages"])
+        if q["hours"] is not None:
+            checks.append(row["max_hours"] is None or q["hours"] <= row["max_hours"])
+        return sum(checks) / len(checks), sum(checks), len(checks)
+
     def evidence_index(self, row, q):
         target = self.vector(FORMAT_TERMS.get(q["event_format"], q["event_format"]) + " " + q["brief"])
         def quality(i):
@@ -199,9 +215,13 @@ class Matcher:
         cards = []
         for relevance, row in accepted[:3]:
             idx = self.evidence_index(row, q)
+            parameter_match, matched_parameters, total_parameters = self.parameter_match(row, q)
             card = {k: row[k] for k in ("id", "anon_name", "categories", "city", "price_from_kzt", "languages", "max_hours", "synthetic", "city_imputed", "price_imputed", "description")}
             card.update({"explanation": self.explanation(row, q, idx), "evidence": row["evidence"][idx],
                          "relevance": relevance, "rank": len(cards) + 1,
+                         "parameter_match": parameter_match,
+                         "matched_parameters": matched_parameters,
+                         "total_parameters": total_parameters,
                          "budget_margin": q["budget"] - row["price_from_kzt"]})
             cards.append(card)
         status = "matched" if cards else ("no_category" if not base else "no_matches")

@@ -163,7 +163,7 @@ function renderComparison() {
   const list = values => values?.length ? values.join(', ') : 'Не указано';
   const rows = [
     ['Начальная цена', c => 'от '+money(c.price_from_kzt)],
-    ['Соответствие запросу', c => matchPercent(c.relevance)],
+    ['Соответствие параметрам', c => matchPercent(c.parameter_match)],
     ['Типы мероприятий', c => list(c.event_formats)],
     ['Языки', c => list(c.languages)],
     ['Максимальная длительность', c => c.max_hours === null ? 'Без привязки к часам присутствия' : c.max_hours === undefined ? 'Не указано' : c.max_hours+' ч'],
@@ -201,8 +201,8 @@ function renderCard(c) {
   price.append(el('span','from','от '),document.createTextNode(money(c.price_from_kzt)),el('small','','за мероприятие'));
   top.append(identity,price);
   const match = el('div','match-summary');
-  match.append(el('strong','match-score','Соответствие запросу: ' + matchPercent(c.relevance)),
-    el('span','match-note','По тексту профиля; обязательные фильтры пройдены.'));
+  match.append(el('strong','match-score','Соответствие параметрам: ' + matchPercent(c.parameter_match)),
+    el('span','match-note',`${c.matched_parameters} из ${c.total_parameters} проверяемых условий выполнены.`));
   const explanation = el('div','explanation');
   explanation.append(el('div','explanation-label','ПОЧЕМУ ПОДХОДИТ'),el('p','',c.explanation));
   const tags = el('div','card-tags');
