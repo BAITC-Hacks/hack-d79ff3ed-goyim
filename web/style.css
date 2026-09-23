@@ -9,3 +9,7 @@
 .ai-parser .secondary{width:100%;padding:12px 8px;font-size:14px}
 .ai-parser .error{font-size:13px}
 #attendance-field .hint{margin:0;font-weight:400;font-size:12px}
+.match-summary{display:flex;flex-wrap:wrap;align-items:center;gap:7px 12px;margin:15px 23px 0}
+.match-score{font-size:13px;line-height:1.5;color:var(--green);background:var(--mint);border-radius:6px;padding:5px 9px}
+.match-note{font-size:12px;line-height:1.5;color:var(--muted)}
+@media(max-width:1000px){.match-summary{margin:15px 18px 0}}

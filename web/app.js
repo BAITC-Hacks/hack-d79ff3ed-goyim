@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 const form = $('search-form');
 const money = n => new Intl.NumberFormat('ru-RU').format(n) + ' ₸';
+const matchPercent = relevance => new Intl.NumberFormat('ru-RU', {style:'percent', maximumFractionDigits:1}).format(Math.max(0, Math.min(1, relevance)));
 const dateText = value => new Date(value + 'T12:00:00Z').toLocaleDateString('ru-RU', {day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
 let previous = null;
 let metadata = null;
@@ -60,6 +61,7 @@ async function parseEvent() {
     const response = await fetch('/api/parse-event', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text}), signal:controller.signal});
     let result;
     try { result = await response.json(); } catch { throw new Error('AI-помощник сейчас недоступен. Заполните параметры вручную.'); }
+    clearTimeout(timer);
     if (!response.ok) throw new Error(result.error || 'AI-помощник сейчас недоступен. Заполните параметры вручную.');
     if (editRevision !== revision || requestSequence !== searchSequence) {
       showMessage('Вы изменили описание или параметры во время обработки. Ответ AI не применён; при необходимости повторите заполнение.');
@@ -70,7 +72,19 @@ async function parseEvent() {
     $('attendance-field').hidden = !values.attendance_mode;
     const labels = {city:'город', date:'дату', event_format:'тип мероприятия', category:'категорию', budget:'бюджет'};
     const missing = Object.entries(labels).filter(([key]) => values[key] === '').map(([,label]) => label);
-    showMessage('Параметры заполнены. Проверьте их и нажмите «Подобрать подрядчиков».' + (missing.length ? ' Дополните: ' + missing.join(', ') + '.' : '') + (values.attendance_mode ? ' Формат участия показан отдельно и не влияет на подбор.' : ''));
+    const modeNotice = values.attendance_mode ? ' Формат участия показан отдельно и не влияет на подбор.' : '';
+    if (missing.length) {
+      showMessage('Дополните: ' + missing.join(', ') + '. Затем нажмите «Подобрать подрядчиков».' + modeNotice);
+      return;
+    }
+    if (!form.reportValidity()) {
+      showMessage('Проверьте отмеченные поля и нажмите «Подобрать подрядчиков».' + modeNotice, true);
+      return;
+    }
+    $('parse-event').textContent = 'Подбираем подрядчиков…';
+    showMessage('Параметры заполнены. Выполняем подбор…' + modeNotice);
+    await run(true);
+    showMessage('Параметры заполнены. Их можно изменить и повторить подбор.' + modeNotice);
   } catch (error) {
     const fallback = 'AI-помощник сейчас недоступен. Заполните параметры вручную.';
     showMessage(error.name === 'AbortError' || error instanceof TypeError ? fallback : error.message, true);
@@ -94,6 +108,9 @@ function renderCard(c) {
   const price = el('div','price');
   price.append(el('span','from','от '),document.createTextNode(money(c.price_from_kzt)),el('small','','за мероприятие'));
   top.append(identity,price);
+  const match = el('div','match-summary');
+  match.append(el('strong','match-score','Соответствие запросу: ' + matchPercent(c.relevance)),
+    el('span','match-note','По тексту профиля; обязательные фильтры пройдены.'));
   const explanation = el('div','explanation');
   explanation.append(el('div','explanation-label','ПОЧЕМУ ПОДХОДИТ'),el('p','',c.explanation));
   const tags = el('div','card-tags');
@@ -109,7 +126,7 @@ function renderCard(c) {
     facts.append(el('dt','',key),el('dd','',value));
   }
   details.append(facts,el('p','hint','Начальная цена не является окончательной сметой. Отсутствие занятой даты в каталоге требует подтверждения у подрядчика.'));
-  card.append(top,explanation,tags,details);
+  card.append(top,match,explanation,tags,details);
   return card;
 }
 
