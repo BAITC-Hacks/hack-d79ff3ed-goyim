@@ -156,6 +156,28 @@ class AITests(unittest.TestCase):
                 self.assertEqual(enhanced["explanation_mode"], "fallback")
                 self.assertEqual(enhanced["cards"], self.result["cards"])
 
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-placeholder"})
+    @patch("ai.fetch_choices")
+    def test_sensitive_brief_stays_local(self, fetch):
+        for brief in ["Напишите на person@example.test", "Мой пароль: example-only", "```python\nprint('example')\n```"]:
+            original = self.matcher.recommend(dict(BASE, brief=brief))
+            enhanced = self.selector.enhance(copy.deepcopy(original), self.matcher)
+            self.assertEqual(enhanced["explanation_mode"], "fallback")
+            self.assertEqual(enhanced["cards"], original["cards"])
+            self.assertIn("не отправлен в AI", enhanced["ai_notice"])
+        fetch.assert_not_called()
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-placeholder"})
+    @patch("ai.fetch_choices")
+    def test_sensitive_profile_excerpt_stays_local(self, fetch):
+        matcher = copy.deepcopy(self.matcher)
+        target = next(row for row in matcher.catalog if row["id"] == self.result["cards"][0]["id"])
+        target["evidence"].append("Контакт: person@example.test")
+        enhanced = self.selector.enhance(copy.deepcopy(self.result), matcher)
+        self.assertEqual(enhanced["cards"], self.result["cards"])
+        self.assertEqual(enhanced["explanation_mode"], "fallback")
+        fetch.assert_not_called()
+
 
 class APITests(unittest.TestCase):
     @classmethod

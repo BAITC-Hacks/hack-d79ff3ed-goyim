@@ -9,6 +9,8 @@ import threading
 import urllib.request
 from collections import OrderedDict
 
+from event_parser import ParserValidationError, validate_shareable_text
+
 SCHEMA = {"type": "object", "properties": {"choices": {"type": "array", "items": {
     "type": "object", "properties": {"id": {"type": "string"}, "evidence_index": {"type": "integer"}},
     "required": ["id", "evidence_index"], "additionalProperties": False}}},
@@ -50,6 +52,15 @@ class EvidenceSelector:
         rows = {r["id"]: r for r in matcher.catalog}
         payload = {"order": result["query"], "profiles": [
             {"id": c["id"], "evidence": rows[c["id"]]["evidence"]} for c in result["cards"]]}
+        try:
+            validate_shareable_text(result["query"]["brief"])
+            for profile in payload["profiles"]:
+                for excerpt in profile["evidence"]:
+                    validate_shareable_text(excerpt)
+        except ParserValidationError:
+            result["ai_notice"] = "Текст с контактами, секретами или кодом не отправлен в AI. Объяснения составлены локально по данным каталога."
+            result["explanation_mode"] = "fallback"
+            return result
         mailbox = queue.Queue(maxsize=1)
 
         def worker():

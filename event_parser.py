@@ -38,6 +38,12 @@ def validate_text(raw):
     text = raw["text"].strip()
     if not 5 <= len(text) <= 1000:
         raise ParserValidationError("Опишите мероприятие: от 5 до 1000 символов.")
+    validate_shareable_text(text)
+    return text
+
+
+def validate_shareable_text(text):
+    """Shared guard for free text before either optional external AI call."""
     # Fail closed for common sensitive/code input. Do not log or echo the rejected text.
     patterns = [r"\bsk-[\w-]+", r"\b(?:ghp_|github_pat_)[\w]+", r"-----BEGIN .*PRIVATE KEY",
                 r"[\w.+-]+@[\w.-]+\.[a-zа-я]{2,}", r"(?:\+\d[\d ()-]{8,}\d)", r"\b\d{10,16}\b",
@@ -45,7 +51,6 @@ def validate_text(raw):
                 r"```|<script\b|\b(?:import|def|class)\s+\w+|\bfunction\s*\(|\bSELECT\s+.+\s+FROM\b"]
     if any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns):
         raise ParserValidationError("Уберите контакты, персональные данные, секреты и код. Оставьте только условия мероприятия.")
-    return text
 
 
 def strict_json(text):
