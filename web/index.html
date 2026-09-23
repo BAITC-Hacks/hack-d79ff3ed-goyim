@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="До трёх event-подрядчиков по вашим условиям, с конкретным объяснением каждого выбора.">
+  <title>Firebird Match — подбор подрядчиков</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Firebird Match, главная"><span class="brand-icon">f</span><span>firebird<span class="brand-light"> / match</span></span></a>
+    <span class="top-meta">HackAlem AI <span class="divider">/</span> 2026</span>
+  </header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">МЕРОПРИЯТИЕ НАЧИНАЕТСЯ С КОМАНДЫ</p><h1>Ваши условия.<br><span>Три подходящих варианта.</span></h1></div><p class="intro-note">Подрядчики, которых легко сравнить.<br>И понятная причина для каждого выбора.</p></div>
+    <div class="workspace">
+      <aside class="search-panel">
+        <div class="panel-heading"><h2>Что планируете?</h2><span class="step">01</span></div>
+        <form id="search-form">
+          <div class="field-pair"><label>Город<select id="city" name="city" required></select></label><label>Дата<input id="date" name="date" type="date" min="2026-09-23" max="2026-12-31" value="2026-10-15" required></label></div>
+          <label>Формат мероприятия<select id="event_format" name="event_format" required></select></label>
+          <label>Кого ищем<select id="category" name="category" required></select></label>
+          <label>Бюджет на подрядчика<div class="input-unit"><input id="budget" name="budget" type="number" min="1" max="1000000000" step="1" value="1000000" required><span>₸</span></div></label>
+          <details class="preferences"><summary>Язык, длительность и пожелания</summary><div class="field-pair"><label>Язык<select id="language" name="language"><option value="">Любой</option></select></label><label>Длительность, ч<input id="hours" name="hours" type="number" min="0.5" max="24" step="0.5" placeholder="Не важно"></label></div><label>Что особенно важно<textarea id="brief" name="brief" rows="3" maxlength="600" placeholder="Например: спокойная подача, опыт деловых форумов"></textarea></label><p class="hint">Пожелания влияют на порядок. Обязательные условия выше сохраняются.</p></details>
+          <p id="form-error" class="error" role="alert" hidden></p>
+          <button id="submit" class="primary" type="submit" disabled>Подобрать подрядчиков <span aria-hidden="true">↗</span></button>
+          <p class="calendar-note">Календарь: 23 сентября — 31 декабря 2026</p>
+        </form>
+        <div class="demo-area"><p class="small-heading">ПОПРОБУЙТЕ НА ПРИМЕРЕ</p><div class="demo-buttons"><button type="button" data-demo="hosts">Ведущий на корпоратив</button><button type="button" data-demo="rare">Флорист на свадьбу</button><button type="button" data-demo="budget">Маленький бюджет</button><button type="button" data-demo="absent">Нет категории в городе</button><button type="button" data-demo="venue">Зал на 14 ноября</button></div></div>
+      </aside>
+      <section class="results-panel" aria-labelledby="results-title" aria-busy="false">
+        <div class="results-heading"><div><p class="eyebrow" id="result-kicker">ПОДБОРКА ДЛЯ ВАС</p><h2 id="results-title">Проверяем каталог…</h2></div><span id="result-time" class="result-time"></span></div>
+        <p id="result-message" class="result-message" role="status" aria-live="polite"></p>
+        <div id="query-summary" class="query-summary"></div>
+        <div id="date-change" class="date-change" hidden></div>
+        <div id="cards" class="cards"></div>
+        <div id="empty-state" class="empty-state" hidden><span class="empty-symbol" aria-hidden="true">∅</span><h3 id="empty-title"></h3><p id="empty-text"></p></div>
+        <div id="alternatives" class="alternatives" hidden></div>
+        <div id="audit" class="audit" hidden><div class="audit-header"><h3>Что повлияло на подбор</h3><span id="audit-count"></span></div><div id="audit-reasons" class="audit-reasons"></div><p class="hint" id="audit-note"></p></div>
+        <div id="result-actions" class="result-actions" hidden><button type="button" id="next-date" class="secondary">Сравнить со следующим днём <span aria-hidden="true">→</span></button><span id="mode-label"></span></div>
+        <p id="ai-notice" class="hint" hidden></p>
+      </section>
+    </div>
+    <footer><span id="dataset-label">Каталог HackAlem AI</span><span>Цены «от». Доступность — по календарю датасета. Бронирование не выполняется.</span></footer>
+    <details class="how"><summary>Как устроен подбор</summary><p>Сначала проверяются город, категория, дата, формат, бюджет, язык и длительность. Среди прошедших проверку профилей сравниваются слова из описания с форматом и пожеланиями. При равной релевантности выше оказывается меньшая начальная цена, затем ID. Это фиксированные правила, а не рейтинг качества подрядчика.</p><p>Объяснения используют поля и цитаты из каталога. Если подключён AI, он выбирает подходящий фрагмент описания из готового списка. Состав и порядок карточек модель не меняет. Синтетические профили и данные, проставленные при подготовке каталога, отмечены в карточках.</p></details>
+  </main>
+</body>
+</html>
