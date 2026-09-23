@@ -10,6 +10,10 @@ let busy = false;
 let requestSequence = 0;
 let editRevision = 0;
 let parsing = false;
+let recoveryButtons = [];
+const comparisonIds = new Set();
+let comparisonInputs = new Map();
+let comparisonOpen = false;
 form.addEventListener('input', () => { editRevision += 1; });
 form.addEventListener('change', () => { editRevision += 1; });
 $('event-request').addEventListener('input', () => { editRevision += 1; });
@@ -38,6 +42,27 @@ function setQuery(q) {
   for (const [key, value] of Object.entries(q)) if ($(key)) $(key).value = value ?? '';
 }
 function comparable(q) { const {date, ...rest} = q; return JSON.stringify(rest); }
+
+function recoveryButton(query, change, label, accessibleLabel = label) {
+  const button = el('button', 'secondary', label);
+  button.type = 'button';
+  button.disabled = busy;
+  button.setAttribute('aria-label', accessibleLabel);
+  button.addEventListener('click', async () => {
+    if (busy) return;
+    const current = readQuery();
+    if (Object.entries(query).some(([key, value]) => current[key] !== value)) {
+      $('form-error').textContent = 'Параметры изменились. Выполните подбор заново, чтобы обновить подсказки.';
+      $('form-error').hidden = false;
+      return;
+    }
+    setQuery({...query, ...change, attendance_mode:$('attendance_mode').value});
+    button.textContent = 'Проверяем условия…';
+    try { await run(true); } finally { button.textContent = label; }
+  });
+  recoveryButtons.push(button);
+  return button;
+}
 
 async function parseEvent() {
   if (parsing || busy || !metadata) return;
@@ -98,6 +123,73 @@ async function parseEvent() {
 }
 $('parse-event').addEventListener('click', parseEvent);
 
+function selectedCards() {
+  return [...new Map((previous?.cards || []).filter(card => comparisonIds.has(card.id)).map(card => [card.id, card])).values()];
+}
+
+function updateComparison() {
+  $('compare-toolbar').hidden = (previous?.cards.length || 0) < 2;
+  $('compare-count').textContent = 'Выбрано для сравнения: '+comparisonIds.size+' из 3';
+  $('compare-selected').disabled = busy || comparisonIds.size < 2;
+  $('clear-comparison').disabled = busy || comparisonIds.size === 0;
+  comparisonInputs.forEach((input, id) => {
+    input.checked = comparisonIds.has(id);
+    input.disabled = busy || (!input.checked && comparisonIds.size >= 3);
+  });
+  if (comparisonIds.size < 2) comparisonOpen = false;
+  $('comparison-panel').hidden = !comparisonOpen;
+  $('compare-selected').setAttribute('aria-expanded', String(comparisonOpen));
+  if (comparisonOpen) renderComparison();
+  else $('comparison-table').replaceChildren();
+}
+
+function clearComparison() {
+  comparisonIds.clear();
+  comparisonOpen = false;
+  updateComparison();
+}
+
+function renderComparison() {
+  const cards = selectedCards();
+  const caption = el('caption', '', 'Сравнение '+cards.length+' выбранных подрядчиков');
+  const head = el('thead');
+  const headings = el('tr');
+  const corner = el('th', '', 'Параметр');
+  corner.scope = 'col';
+  headings.append(corner);
+  cards.forEach(card => { const th = el('th', '', card.anon_name); th.scope = 'col'; headings.append(th); });
+  head.append(headings);
+  const body = el('tbody');
+  const list = values => values?.length ? values.join(', ') : 'Не указано';
+  const rows = [
+    ['Начальная цена', c => 'от '+money(c.price_from_kzt)],
+    ['Соответствие запросу', c => matchPercent(c.relevance)],
+    ['Типы мероприятий', c => list(c.event_formats)],
+    ['Языки', c => list(c.languages)],
+    ['Максимальная длительность', c => c.max_hours === null ? 'Без привязки к часам присутствия' : c.max_hours === undefined ? 'Не указано' : c.max_hours+' ч'],
+    ['Опыт — из описания профиля', c => c.experience_excerpt ? '«'+c.experience_excerpt+'»' : 'Не указано'],
+    ['Почему подходит', c => c.explanation],
+    ['Источник данных', c => [c.synthetic ? 'Синтетический профиль организаторов' : 'Анонимизированный профиль каталога', c.price_imputed ? 'Цена проставлена в датасете' : '', c.city_imputed ? 'Город проставлен в датасете' : ''].filter(Boolean).join('. ')],
+  ];
+  for (const [label, value] of rows) {
+    const row = el('tr');
+    const heading = el('th', '', label);
+    heading.scope = 'row';
+    row.append(heading, ...cards.map(card => el('td', '', value(card))));
+    body.append(row);
+  }
+  $('comparison-table').replaceChildren(caption, head, body);
+}
+
+$('compare-selected').addEventListener('click', () => {
+  if (busy || selectedCards().length < 2) return;
+  comparisonOpen = true;
+  updateComparison();
+  $('comparison-title').focus();
+  $('comparison-panel').scrollIntoView({behavior:'smooth', block:'start'});
+});
+$('clear-comparison').addEventListener('click', () => { if (!busy) clearComparison(); });
+
 function renderCard(c) {
   const card = el('article', 'card');
   card.dataset.id = c.id;
@@ -126,11 +218,27 @@ function renderCard(c) {
     facts.append(el('dt','',key),el('dd','',value));
   }
   details.append(facts,el('p','hint','Начальная цена не является окончательной сметой. Отсутствие занятой даты в каталоге требует подтверждения у подрядчика.'));
-  card.append(top,match,explanation,tags,details);
+  const toggle = el('label', 'compare-toggle');
+  const input = el('input');
+  input.type = 'checkbox';
+  input.setAttribute('aria-label', 'Сравнить: '+c.anon_name);
+  input.addEventListener('change', () => {
+    if (!busy) {
+      if (!input.checked) comparisonIds.delete(c.id);
+      else if (comparisonIds.size < 3) comparisonIds.add(c.id);
+    }
+    updateComparison();
+  });
+  comparisonInputs.set(c.id, input);
+  toggle.append(input, el('span', '', 'Сравнить'));
+  card.append(top,match,explanation,tags,toggle,details);
   return card;
 }
 
 function render(result) {
+  comparisonIds.clear();
+  comparisonInputs = new Map();
+  comparisonOpen = false;
   const q = result.query;
   $('result-kicker').textContent = result.status === 'matched' ? 'ПОДБОРКА ДЛЯ ВАС' : 'РЕЗУЛЬТАТ ПОДБОРА';
   $('results-title').textContent = result.status === 'matched' ? (result.cards.length === 3 ? 'Ваши три варианта' : 'Подходящих вариантов: ' + result.cards.length) : (result.status === 'no_category' ? 'Такой категории пока нет' : 'Условия не совпали');
@@ -142,27 +250,34 @@ function render(result) {
   if (q.brief) $('query-summary').append(el('span','','Пожелания: '+q.brief));
   $('cards').replaceChildren(...result.cards.map(renderCard));
   $('empty-state').hidden = result.cards.length > 0;
-  $('empty-title').textContent = result.status === 'no_category' ? 'Попробуйте другой город' : 'Ни один профиль не проходит все условия';
+  $('empty-title').textContent = result.status === 'no_category' ? 'Попробуйте другой город' : 'По вашим условиям подрядчиков не найдено';
   $('empty-text').textContent = result.status === 'no_category' ? 'В выбранном городе в исходном каталоге нет этой категории. Смена даты или бюджета её не добавит.' : 'Ниже показаны причины. Можно изменить дату, бюджет или другие параметры и повторить подбор.';
   $('audit').hidden = result.status === 'no_category';
   $('audit-count').textContent = result.counts.in_category + ' в городе и категории · ' + result.counts.eligible + ' подходят';
   $('audit-reasons').replaceChildren(...result.rejections.map(r => { const n=el('span','audit-reason');n.append(el('b','',r.count),document.createTextNode(r.label));return n;}));
   $('audit-note').textContent = result.rejections.length ? 'У одного профиля может быть несколько причин отказа. Для выдачи должны выполняться все условия.' : 'Все профили в выбранном городе и категории проходят условия.';
   $('alternatives').replaceChildren();
-  if (result.alternative_dates.length) {
-    $('alternatives').append(el('p','','На соседних датах вариантов больше. Остальные условия сохраняются:'));
+  recoveryButtons = [];
+  if (result.status !== 'no_category' && result.suggested_min_budget > q.budget) {
+    const minimum = result.suggested_min_budget;
+    const option = el('div', 'recovery-option');
+    option.append(el('p','','Увеличьте бюджет минимум на '+money(minimum-q.budget)+' — до '+money(minimum)+'.'),
+      recoveryButton(q, {budget:minimum}, 'Искать с бюджетом '+money(minimum)));
+    $('alternatives').append(option);
+  }
+  if (result.status !== 'no_category' && result.alternative_dates.length) {
     for (const alt of result.alternative_dates) {
-      const button = el('button','secondary',dateText(alt.date)+' · '+alt.count+' подходят');
-      button.type='button';button.addEventListener('click',()=>{if(busy)return;setQuery(q);$('date').value=alt.date;run();});
-      $('alternatives').append(button);
+      const count = alt.count;
+      const noun = {one:'подрядчик',few:'подрядчика',many:'подрядчиков',other:'подрядчика'}[new Intl.PluralRules('ru').select(count)];
+      const option = el('div', 'recovery-option');
+      option.append(el('p','','На '+dateText(alt.date)+(count === 1 ? ' подходит ' : ' подходят ')+count+' '+noun+'.'),
+        recoveryButton(q, {date:alt.date}, 'Проверить эту дату', 'Проверить дату '+dateText(alt.date)));
+      $('alternatives').append(option);
     }
   }
-  if (result.suggested_min_budget) {
-    const button = el('button','secondary','Проверить бюджет '+money(result.suggested_min_budget));
-    button.type='button';button.addEventListener('click',()=>{if(busy)return;setQuery(q);$('budget').value=result.suggested_min_budget;run();});
-    $('alternatives').append(el('p','','При остальных выбранных условиях есть вариант с начальной ценой от '+money(result.suggested_min_budget)+'.'),button);
-  }
   $('alternatives').hidden = !$('alternatives').childElementCount;
+  if (!$('alternatives').hidden) $('alternatives').append(el('p','hint','Изменится только выбранный параметр. Остальные условия поиска сохраняются.'));
+  else if (result.status === 'no_matches') $('empty-text').textContent = 'Проверенных альтернатив по бюджету или соседним датам нет. Посмотрите причины отказа ниже и измените параметры вручную.';
   $('date-change').hidden = true;
   if (previous && comparable(previous.query) === comparable(q) && previous.query.date !== q.date) {
     const nowIds = new Set(result.cards.map(c=>c.id));
@@ -183,11 +298,14 @@ function render(result) {
   $('mode-label').textContent=result.explanation_mode.startsWith('ai')?'Фрагменты выбраны AI':'Объяснения по данным каталога';
   $('ai-notice').textContent=result.ai_notice || '';$('ai-notice').hidden=!result.ai_notice;
   previous=result;
+  updateComparison();
 }
 
 async function run(scroll = false) {
   if (busy || !metadata || !form.reportValidity()) return;
   busy=true;
+  clearComparison();
+  recoveryButtons.forEach(button => { button.disabled = true; });
   const sequence=++requestSequence;
   const revision=editRevision;
   $('form-error').hidden=true;
@@ -209,6 +327,8 @@ async function run(scroll = false) {
     $('form-error').hidden=false;
   } finally {
     clearTimeout(timer);busy=false;$('submit').disabled=false;$('submit').replaceChildren(document.createTextNode('Подобрать подрядчиков '),el('span','','↗'));
+    recoveryButtons.forEach(button => { button.disabled = false; });
+    updateComparison();
     document.querySelector('.results-panel').setAttribute('aria-busy','false');
   }
 }

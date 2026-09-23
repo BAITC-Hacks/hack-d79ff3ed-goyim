@@ -46,6 +46,18 @@
         <div id="query-summary" class="query-summary"></div>
         <div id="date-change" class="date-change" hidden></div>
         <div id="cards" class="cards"></div>
+        <div id="compare-toolbar" class="compare-toolbar" hidden>
+          <span id="compare-count" role="status" aria-live="polite">Выбрано для сравнения: 0 из 3</span>
+          <button id="compare-selected" class="secondary" type="button" aria-controls="comparison-panel" aria-expanded="false" disabled>Сравнить выбранных</button>
+          <button id="clear-comparison" class="secondary" type="button" disabled>Очистить сравнение</button>
+        </div>
+        <section id="comparison-panel" class="comparison-panel" aria-labelledby="comparison-title" hidden>
+          <h3 id="comparison-title" tabindex="-1">Сравнение подрядчиков</h3>
+          <p id="comparison-hint" class="hint">Цена «от», не окончательная смета. Опыт — утверждения профиля, не независимая проверка. На узком экране таблицу можно прокручивать по горизонтали.</p>
+          <div class="comparison-scroll" role="region" aria-label="Таблица сравнения подрядчиков" aria-describedby="comparison-hint" tabindex="0">
+            <table id="comparison-table" class="comparison-table"></table>
+          </div>
+        </section>
         <div id="empty-state" class="empty-state" hidden><span class="empty-symbol" aria-hidden="true">∅</span><h3 id="empty-title"></h3><p id="empty-text"></p></div>
         <div id="alternatives" class="alternatives" hidden></div>
         <div id="audit" class="audit" hidden><div class="audit-header"><h3>Что повлияло на подбор</h3><span id="audit-count"></span></div><div id="audit-reasons" class="audit-reasons"></div><p class="hint" id="audit-note"></p></div>
