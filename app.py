@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from ai import EvidenceSelector
 from matcher import Matcher
+from comparison import add_comparison_fields
 from event_parser import parse_event, ParserUnavailable, ParserValidationError
 
 ROOT = Path(__file__).resolve().parent
@@ -90,6 +91,7 @@ def make_handler(matcher=None, selector=None):
                 start = time.perf_counter()
                 result = matcher.recommend(raw)
                 result = selector.enhance(result, matcher)
+                result = add_comparison_fields(result, matcher)
                 result["elapsed_ms"] = round((time.perf_counter() - start) * 1000, 1)
                 self.send_json(200, result)
             except (ValueError, UnicodeError) as error:

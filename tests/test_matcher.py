@@ -225,6 +225,8 @@ class APITests(unittest.TestCase):
             data = json.load(response)
             self.assertEqual(len(data["cards"]), 3)
             self.assertIn("elapsed_ms", data)
+            self.assertTrue(all("event_formats" in card and "experience_excerpt" in card for card in data["cards"]))
+            self.assertFalse(any("rating" in card for card in data["cards"]))
         request = urllib.request.Request(self.url + "/api/recommend", data=b'{}', headers={"Content-Type": "application/json"})
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(request)

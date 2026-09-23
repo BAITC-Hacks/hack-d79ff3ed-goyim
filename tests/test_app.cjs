@@ -25,6 +25,7 @@ class Element {
   setAttribute(name, value) { this[name] = value; }
   addEventListener(name, listener) { this.listeners[name] = listener; }
   scrollIntoView() {}
+  focus() { this.focused = true; }
 }
 
 function recommendation(query) {
@@ -211,4 +212,77 @@ test('cards show the existing relevance as a percentage, including zero and full
   assert.match(vm.runInContext('matchPercent(0)', context), /^0\s*%$/);
   assert.match(vm.runInContext('matchPercent(1)', context), /^100\s*%$/);
   assert.match(vm.runInContext('matchPercent(0.99999)', context), /^100\s*%$/);
+});
+
+async function comparisonApp() {
+  const state = await app(undefined, async query => {
+    const result = recommendation(query);
+    result.cards = [0,1,2].map(index => ({...result.cards[0],id:'sample-'+index,anon_name:'Профиль '+index,rank:index+1,
+      event_formats:['корпоратив','свадьба'],experience_excerpt:index===0 ? 'Опыт работы — 12 лет.' : null}));
+    return {ok:true,json:async () => result};
+  });
+  state.select = index => {
+    const card = state.elements.cards.children[index];
+    const checkbox = card.children.find(node => node.className === 'compare-toggle').children[0];
+    checkbox.checked = !checkbox.checked;
+    checkbox.listeners.change();
+    return checkbox;
+  };
+  return state;
+}
+
+test('comparison accepts two or three unique IDs and renders actual values without invented experience or rating', async () => {
+  const {elements,select} = await comparisonApp();
+  assert.equal(elements['compare-selected'].disabled, true);
+  const first = select(0);
+  first.listeners.change(); // Same ID cannot be added twice.
+  assert.match(elements['compare-count'].textContent, /1 из 3/);
+  assert.equal(elements['compare-selected'].disabled, true);
+  select(1);
+  assert.equal(elements['compare-selected'].disabled, false);
+  elements['compare-selected'].listeners.click();
+  assert.equal(elements['comparison-panel'].hidden, false);
+  assert.equal(elements['comparison-title'].focused, true);
+  let [,head,body] = elements['comparison-table'].children;
+  assert.equal(head.children[0].children.length, 3);
+  assert.equal(body.children[0].children[1].textContent, 'от 100 000 ₸');
+  assert.equal(body.children[1].children[0].textContent, 'Соответствие запросу');
+  assert.equal(body.children[2].children[1].textContent, 'корпоратив, свадьба');
+  assert.equal(body.children[5].children[1].textContent, '«Опыт работы — 12 лет.»');
+  assert.equal(body.children[5].children[2].textContent, 'Не указано');
+  assert.equal(body.children.some(row => /Рейтинг|звёзд/.test(row.children[0].textContent)), false);
+  select(2);
+  assert.equal(elements['comparison-table'].children[1].children[0].children.length, 4);
+  select(1);
+  assert.equal(elements['comparison-table'].children[1].children[0].children.length, 3);
+  select(0);
+  assert.equal(elements['comparison-panel'].hidden, true);
+  assert.equal(elements['compare-selected'].disabled, true);
+});
+
+test('clear comparison unchecks every card and empties the table', async () => {
+  const {elements,select} = await comparisonApp();
+  const inputs = [select(0),select(1)];
+  elements['compare-selected'].listeners.click();
+  elements['clear-comparison'].listeners.click();
+  assert.equal(elements['comparison-panel'].hidden, true);
+  assert.equal(elements['comparison-table'].children.length, 0);
+  assert.equal(inputs.every(input => !input.checked), true);
+  assert.match(elements['compare-count'].textContent, /0 из 3/);
+});
+
+test('manual and AI searches clear old comparison even when profile IDs recur', async () => {
+  const {elements,select,clickAI} = await comparisonApp();
+  select(0); select(1);
+  elements['compare-selected'].listeners.click();
+  elements['search-form'].listeners.submit({preventDefault(){}});
+  await nextTurn();
+  assert.match(elements['compare-count'].textContent, /0 из 3/);
+  assert.equal(elements['comparison-panel'].hidden, true);
+  select(0); select(2);
+  elements['compare-selected'].listeners.click();
+  await clickAI();
+  assert.match(elements['compare-count'].textContent, /0 из 3/);
+  assert.equal(elements['comparison-table'].children.length, 0);
+  assert.equal(elements['comparison-panel'].hidden, true);
 });
