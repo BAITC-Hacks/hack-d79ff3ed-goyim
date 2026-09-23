@@ -79,6 +79,20 @@ class MatcherTests(unittest.TestCase):
                     self.assertIn(q["language"], row["languages"])
                     self.assertLessEqual(row["price_from_kzt"], q["budget"])
                     self.assertTrue(row["max_hours"] is None or row["max_hours"] >= 6)
+                    self.assertEqual(card["parameter_match"], 1)
+                    self.assertEqual(card["matched_parameters"], 7)
+                    self.assertEqual(card["total_parameters"], 7)
+
+    def test_parameter_match_counts_only_requested_verifiable_conditions(self):
+        required_only = self.m.recommend(BASE)["cards"]
+        self.assertTrue(all(card["parameter_match"] == 1 for card in required_only))
+        self.assertTrue(all(card["matched_parameters"] == 5 for card in required_only))
+        self.assertTrue(all(card["total_parameters"] == 5 for card in required_only))
+
+        with_optional = self.m.recommend(dict(BASE, language="русский", hours=6))["cards"]
+        self.assertTrue(all(card["parameter_match"] == 1 for card in with_optional))
+        self.assertTrue(all(card["matched_parameters"] == 7 for card in with_optional))
+        self.assertTrue(all(card["total_parameters"] == 7 for card in with_optional))
 
     def test_explanations_are_specific_and_grounded(self):
         result = self.m.recommend(BASE)

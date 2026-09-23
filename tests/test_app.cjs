@@ -32,7 +32,8 @@ function recommendation(query) {
   return {query, status:'matched', message:'Найден один вариант.', elapsed_ms:1,
     cards:[{id:'sample',rank:1,anon_name:'Тестовый профиль',categories:[query.category],city:query.city,
       price_from_kzt:100000,languages:['Русский'],max_hours:null,budget_margin:query.budget-100000,
-      explanation:'Тестовые данные.',description:'Тестовое описание.',relevance:0.2543}],
+      explanation:'Тестовые данные.',description:'Тестовое описание.',relevance:0.2543,
+      parameter_match:1,matched_parameters:7,total_parameters:7}],
     counts:{in_category:1,eligible:1},rejections:[],alternative_dates:[],
     explanation_mode:'local',ai_notice:null,busy_profile_ids:[]};
 }
@@ -203,12 +204,12 @@ test('manual edits after AI results are used for the next manual search', async 
   assert.equal(calls.at(-1).body.budget, 350000);
 });
 
-test('cards show the existing relevance as a percentage, including zero and full match', async () => {
+test('cards show verified parameter match instead of lexical relevance', async () => {
   const {elements,context} = await app();
   const card = elements.cards.children[0];
   const match = card.children.find(child => child.className === 'match-summary');
-  assert.match(match.children[0].textContent, /Соответствие запросу: 25,4\s*%/);
-  assert.match(match.children[1].textContent, /обязательные фильтры пройдены/);
+  assert.match(match.children[0].textContent, /Соответствие параметрам: 100\s*%/);
+  assert.match(match.children[1].textContent, /7 из 7 проверяемых условий выполнены/);
   assert.match(vm.runInContext('matchPercent(0)', context), /^0\s*%$/);
   assert.match(vm.runInContext('matchPercent(1)', context), /^100\s*%$/);
   assert.match(vm.runInContext('matchPercent(0.99999)', context), /^100\s*%$/);
@@ -246,7 +247,7 @@ test('comparison accepts two or three unique IDs and renders actual values witho
   let [,head,body] = elements['comparison-table'].children;
   assert.equal(head.children[0].children.length, 3);
   assert.equal(body.children[0].children[1].textContent, 'от 100 000 ₸');
-  assert.equal(body.children[1].children[0].textContent, 'Соответствие запросу');
+  assert.equal(body.children[1].children[0].textContent, 'Соответствие параметрам');
   assert.equal(body.children[2].children[1].textContent, 'корпоратив, свадьба');
   assert.equal(body.children[5].children[1].textContent, '«Опыт работы — 12 лет.»');
   assert.equal(body.children[5].children[2].textContent, 'Не указано');
