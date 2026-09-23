@@ -8,7 +8,10 @@ let metadata = null;
 let busy = false;
 let requestSequence = 0;
 let editRevision = 0;
+let parsing = false;
 form.addEventListener('input', () => { editRevision += 1; });
+form.addEventListener('change', () => { editRevision += 1; });
+$('event-request').addEventListener('input', () => { editRevision += 1; });
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -18,6 +21,7 @@ function el(tag, cls, text) {
 }
 function fill(id, values, selected, preserve = false) {
   if (!preserve) $(id).replaceChildren();
+  if (!preserve) { const empty = el('option', '', 'Выберите…'); empty.value = ''; $(id).append(empty); }
   values.forEach(v => { const option = el('option', '', v); option.value = v; $(id).append(option); });
   $(id).value = selected;
 }
@@ -28,9 +32,57 @@ function readQuery() {
     brief:$('brief').value.trim()};
 }
 function setQuery(q) {
+  editRevision += 1;
+  if (!Object.hasOwn(q, 'attendance_mode')) { $('attendance_mode').value = ''; $('attendance-field').hidden = true; }
   for (const [key, value] of Object.entries(q)) if ($(key)) $(key).value = value ?? '';
 }
 function comparable(q) { const {date, ...rest} = q; return JSON.stringify(rest); }
+
+async function parseEvent() {
+  if (parsing || busy || !metadata) return;
+  const text = $('event-request').value.trim();
+  const showMessage = (message, error = false) => {
+    $('parser-message').textContent = message;
+    $('parser-message').className = error ? 'error' : 'hint';
+    $('parser-message').hidden = false;
+  };
+  if (text.length < 5) { showMessage('Опишите мероприятие: укажите хотя бы один конкретный параметр.', true); return; }
+  const revision = editRevision;
+  const searchSequence = requestSequence;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
+  parsing = true;
+  $('parse-event').disabled = true;
+  $('parse-event').textContent = 'Распознаём параметры…';
+  $('ai-parser').setAttribute('aria-busy', 'true');
+  showMessage('Обрабатываем описание. Ручные фильтры доступны.');
+  try {
+    const response = await fetch('/api/parse-event', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text}), signal:controller.signal});
+    let result;
+    try { result = await response.json(); } catch { throw new Error('AI-помощник сейчас недоступен. Заполните параметры вручную.'); }
+    if (!response.ok) throw new Error(result.error || 'AI-помощник сейчас недоступен. Заполните параметры вручную.');
+    if (editRevision !== revision || requestSequence !== searchSequence) {
+      showMessage('Вы изменили описание или параметры во время обработки. Ответ AI не применён; при необходимости повторите заполнение.');
+      return;
+    }
+    const values = EventRequestForm.toFilters(result.fields, text, metadata);
+    setQuery(values);
+    $('attendance-field').hidden = !values.attendance_mode;
+    const labels = {city:'город', date:'дату', event_format:'тип мероприятия', category:'категорию', budget:'бюджет'};
+    const missing = Object.entries(labels).filter(([key]) => values[key] === '').map(([,label]) => label);
+    showMessage('Параметры заполнены. Проверьте их и нажмите «Подобрать подрядчиков».' + (missing.length ? ' Дополните: ' + missing.join(', ') + '.' : '') + (values.attendance_mode ? ' Формат участия показан отдельно и не влияет на подбор.' : ''));
+  } catch (error) {
+    const fallback = 'AI-помощник сейчас недоступен. Заполните параметры вручную.';
+    showMessage(error.name === 'AbortError' || error instanceof TypeError ? fallback : error.message, true);
+  } finally {
+    clearTimeout(timer);
+    parsing = false;
+    $('parse-event').disabled = false;
+    $('parse-event').textContent = 'Заполнить параметры с AI';
+    $('ai-parser').setAttribute('aria-busy', 'false');
+  }
+}
+$('parse-event').addEventListener('click', parseEvent);
 
 function renderCard(c) {
   const card = el('article', 'card');
@@ -161,7 +213,7 @@ async function init(){
     fill('city',metadata.cities,'Алматы');fill('category',metadata.categories,'Ведущий');fill('event_format',metadata.formats,'корпоратив');fill('language',metadata.languages,'',true);
     $('dataset-label').textContent=metadata.total+' профилей · '+metadata.categories.length+' категорий · '+metadata.synthetic+' синтетических';
     $('date').min=metadata.calendar_start;$('date').max=metadata.calendar_end;
-    $('submit').disabled=false;await run();
+    $('submit').disabled=false;$('parse-event').disabled=false;await run();
   }catch(error){$('results-title').textContent='Каталог не загружен';$('result-message').textContent=error.message;}
 }
 init();

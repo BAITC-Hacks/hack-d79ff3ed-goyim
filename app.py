@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from ai import EvidenceSelector
 from matcher import Matcher
+from event_parser import parse_event, ParserUnavailable, ParserValidationError
 
 ROOT = Path(__file__).resolve().parent
 
@@ -58,6 +59,7 @@ def make_handler(matcher=None, selector=None):
                 self.send_json(200, {"status": "ok", "profiles": len(matcher.catalog)})
             else:
                 assets = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "application/javascript"),
+                          "/event-parser.js": ("event-parser.js", "application/javascript"),
                           "/style.css": ("style.css", "text/css"), "/favicon.svg": ("favicon.svg", "image/svg+xml")}
                 if path not in assets:
                     return self.send_json(404, {"error": "Страница не найдена."})
@@ -65,7 +67,8 @@ def make_handler(matcher=None, selector=None):
                 self.send_body(200, (ROOT / "web" / filename).read_bytes(), mime + "; charset=utf-8")
 
         def do_POST(self):
-            if urlsplit(self.path).path != "/api/recommend":
+            path = urlsplit(self.path).path
+            if path not in {"/api/recommend", "/api/parse-event"}:
                 return self.send_json(404, {"error": "Метод не найден."})
             origin = self.headers.get("Origin")
             if origin and urlsplit(origin).netloc != self.headers.get("Host"):
@@ -77,6 +80,13 @@ def make_handler(matcher=None, selector=None):
                 if not 0 < length <= 32_768:
                     return self.send_json(413, {"error": "Недопустимый размер запроса."})
                 raw = json.loads(self.rfile.read(length).decode("utf-8"))
+                if path == "/api/parse-event":
+                    try:
+                        return self.send_json(200, {"fields": parse_event(raw, matcher.metadata())})
+                    except ParserUnavailable as error:
+                        return self.send_json(503, {"error": str(error)})
+                    except ParserValidationError as error:
+                        return self.send_json(422, {"error": str(error)})
                 start = time.perf_counter()
                 result = matcher.recommend(raw)
                 result = selector.enhance(result, matcher)

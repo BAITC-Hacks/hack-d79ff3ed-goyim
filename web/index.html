@@ -7,6 +7,7 @@
   <title>Firebird Match — подбор подрядчиков</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
+  <script src="/event-parser.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -19,9 +20,17 @@
     <div class="workspace">
       <aside class="search-panel">
         <div class="panel-heading"><h2>Что планируете?</h2><span class="step">01</span></div>
+        <div class="ai-parser" id="ai-parser" aria-busy="false">
+          <label for="event-request">Опишите мероприятие своими словами</label>
+          <textarea id="event-request" rows="4" maxlength="1000" placeholder="Нужен фотограф для офлайн-свадьбы в Астане 5 октября, бюджет до 200 000 ₸." aria-describedby="parser-hint"></textarea>
+          <p id="parser-hint" class="hint">Только условия мероприятия, без контактов и личных данных. Даты без года — в 2026 году.</p>
+          <button id="parse-event" class="secondary" type="button" disabled>Заполнить параметры с AI</button>
+          <p id="parser-message" class="hint" role="status" aria-live="polite" hidden></p>
+        </div>
         <form id="search-form">
           <div class="field-pair"><label>Город<select id="city" name="city" required></select></label><label>Дата<input id="date" name="date" type="date" min="2026-09-23" max="2026-12-31" value="2026-10-15" required></label></div>
           <label>Формат мероприятия<select id="event_format" name="event_format" required></select></label>
+          <label id="attendance-field" hidden>Формат участия<select id="attendance_mode" name="attendance_mode"><option value="">Не указан</option><option value="офлайн">Офлайн</option><option value="онлайн">Онлайн</option><option value="гибрид">Гибрид</option></select><span class="hint">Каталог не проверяет формат участия. Для поиска используется тип мероприятия выше.</span></label>
           <label>Кого ищем<select id="category" name="category" required></select></label>
           <label>Бюджет на подрядчика<div class="input-unit"><input id="budget" name="budget" type="number" min="1" max="1000000000" step="1" value="1000000" required><span>₸</span></div></label>
           <details class="preferences"><summary>Язык, длительность и пожелания</summary><div class="field-pair"><label>Язык<select id="language" name="language"><option value="">Любой</option></select></label><label>Длительность, ч<input id="hours" name="hours" type="number" min="0.5" max="24" step="0.5" placeholder="Не важно"></label></div><label>Что особенно важно<textarea id="brief" name="brief" rows="3" maxlength="600" placeholder="Например: спокойная подача, опыт деловых форумов"></textarea></label><p class="hint">Пожелания влияют на порядок. Обязательные условия выше сохраняются.</p></details>
