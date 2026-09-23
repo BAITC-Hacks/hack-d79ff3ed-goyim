@@ -123,6 +123,30 @@ class MatcherTests(unittest.TestCase):
         self.assertEqual(basic["counts"]["eligible"], tailored["counts"]["eligible"])
         self.assertNotEqual([c["id"] for c in basic["cards"]], [c["id"] for c in tailored["cards"]])
 
+    def test_budget_recovery_is_minimal_and_preserves_other_requirements(self):
+        query = dict(BASE, budget=10000, language="русский", hours=6, brief="Спокойная подача")
+        empty = self.m.recommend(query)
+        minimum = empty["suggested_min_budget"]
+        self.assertIsNotNone(minimum)
+        recovered = self.m.recommend(dict(query, budget=minimum))
+        self.assertEqual(recovered["status"], "matched")
+        self.assertFalse(self.m.recommend(dict(query, budget=minimum-1))["cards"])
+        for key, value in empty["query"].items():
+            if key != "budget": self.assertEqual(recovered["query"][key], value)
+
+    def test_budget_recovery_excludes_busy_or_wrong_format_candidates(self):
+        row = copy.deepcopy(next(row for row in self.m.catalog if row["city"] == BASE["city"] and BASE["category"] in row["categories"]))
+        row.update(price_from_kzt=40000, busy_dates=[BASE["date"]], event_formats=[BASE["event_format"]])
+        query = dict(BASE, budget=10000)
+        self.assertIsNone(Matcher([row]).recommend(query)["suggested_min_budget"])
+        row.update(busy_dates=[], event_formats=["свадьба"])
+        # Keep корпоратив in metadata without adding an eligible row in this city.
+        other = copy.deepcopy(row)
+        other.update(id="other-city",city="Астана",event_formats=[BASE["event_format"]])
+        empty = Matcher([row,other]).recommend(query)
+        self.assertIsNone(empty["suggested_min_budget"])
+        self.assertEqual(empty["alternative_dates"], [])
+
 
 class AITests(unittest.TestCase):
     def setUp(self):

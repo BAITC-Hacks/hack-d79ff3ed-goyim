@@ -36,7 +36,7 @@ function recommendation(query) {
     explanation_mode:'local',ai_notice:null,busy_profile_ids:[]};
 }
 
-async function app(parseResponse = async () => ({ok:true,json:async () => ({fields})})) {
+async function app(parseResponse = async () => ({ok:true,json:async () => ({fields})}), recommendResponse = async query => ({ok:true,json:async () => recommendation(query)})) {
   const elements = Object.fromEntries([...fs.readFileSync(path.join(web, 'index.html'), 'utf8').matchAll(/id="([^"]+)"/g)].map(([,id]) => [id,new Element()]));
   elements.date.value = '2026-10-15';
   elements.budget.value = '1000000';
@@ -54,7 +54,7 @@ async function app(parseResponse = async () => ({ok:true,json:async () => ({fiel
       const body = JSON.parse(options.body);
       calls.push({url,body});
       if (url === '/api/parse-event') return parseResponse();
-      return {ok:true,json:async () => recommendation(body)};
+      return recommendResponse(body);
     },
   });
   vm.runInContext(fs.readFileSync(path.join(web, 'event-parser.js'), 'utf8'), context);
@@ -72,6 +72,62 @@ test('one AI click fills the actual form and sends exactly one search with the e
   assert.equal(elements.attendance_mode.value, 'офлайн');
   assert.equal(elements['parse-event'].disabled, false);
   assert.equal(elements['ai-parser']['aria-busy'], 'false');
+});
+
+test('budget recovery shows the actual difference and sends one request preserving all other filters', async () => {
+  let release;
+  let hold = false;
+  const {elements,calls,context} = await app(undefined, async query => {
+    if (hold) await new Promise(resolve => { release = resolve; });
+    return {ok:true,json:async () => ({...recommendation(query),status:'no_matches',cards:[],suggested_min_budget:1030000})};
+  });
+  const option = elements.alternatives.children[0];
+  assert.match(option.children[0].textContent, /30\s000 ₸ — до 1\s030\s000 ₸/);
+  const button = option.children[1];
+  const before = JSON.parse(vm.runInContext('JSON.stringify(readQuery())', context));
+  elements.attendance_mode.value = 'офлайн';
+  hold = true;
+  const pending = button.listeners.click();
+  await button.listeners.click();
+  assert.equal(button.disabled, true);
+  assert.equal(button.textContent, 'Проверяем условия…');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body, {...before,budget:1030000});
+  assert.equal(elements.attendance_mode.value, 'офлайн');
+  release();
+  await pending;
+});
+
+test('date recovery preserves optional filters and uses the selected date', async () => {
+  const {elements,calls,context} = await app();
+  vm.runInContext(`setQuery({...readQuery(),language:'Русский',hours:6,brief:'Спокойная подача'});
+    render({...previous,query:readQuery(),status:'no_matches',cards:[],alternative_dates:[{date:'2026-10-16',count:2}]});`, context);
+  const before = JSON.parse(vm.runInContext('JSON.stringify(readQuery())', context));
+  const option = elements.alternatives.children[0];
+  assert.match(option.children[0].textContent, /подходят 2 подрядчика/);
+  await option.children[1].listeners.click();
+  assert.deepEqual(calls[0].body, {...before,date:'2026-10-16'});
+});
+
+test('empty recovery and absent category remain distinct and never invent alternatives', async () => {
+  const {elements,context} = await app();
+  vm.runInContext(`render({...previous,status:'no_matches',cards:[],suggested_min_budget:null,alternative_dates:[]})`, context);
+  assert.equal(elements.alternatives.hidden, true);
+  assert.equal(elements['empty-title'].textContent, 'По вашим условиям подрядчиков не найдено');
+  assert.match(elements['empty-text'].textContent, /Проверенных альтернатив/);
+  vm.runInContext(`render({...previous,status:'no_category'})`, context);
+  assert.equal(elements.alternatives.hidden, true);
+  assert.match(elements['empty-text'].textContent, /нет этой категории/);
+});
+
+test('recovery does not overwrite filters edited after the result', async () => {
+  const {elements,calls,context} = await app();
+  vm.runInContext(`render({...previous,status:'no_matches',cards:[],suggested_min_budget:1030000})`, context);
+  elements.city.value = 'Астана';
+  await elements.alternatives.children[0].children[1].listeners.click();
+  assert.equal(calls.length, 0);
+  assert.equal(elements.city.value, 'Астана');
+  assert.match(elements['form-error'].textContent, /Параметры изменились/);
 });
 
 test('partial extraction asks for missing fields without searching with old defaults', async () => {

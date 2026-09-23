@@ -10,6 +10,7 @@ let busy = false;
 let requestSequence = 0;
 let editRevision = 0;
 let parsing = false;
+let recoveryButtons = [];
 form.addEventListener('input', () => { editRevision += 1; });
 form.addEventListener('change', () => { editRevision += 1; });
 $('event-request').addEventListener('input', () => { editRevision += 1; });
@@ -38,6 +39,27 @@ function setQuery(q) {
   for (const [key, value] of Object.entries(q)) if ($(key)) $(key).value = value ?? '';
 }
 function comparable(q) { const {date, ...rest} = q; return JSON.stringify(rest); }
+
+function recoveryButton(query, change, label, accessibleLabel = label) {
+  const button = el('button', 'secondary', label);
+  button.type = 'button';
+  button.disabled = busy;
+  button.setAttribute('aria-label', accessibleLabel);
+  button.addEventListener('click', async () => {
+    if (busy) return;
+    const current = readQuery();
+    if (Object.entries(query).some(([key, value]) => current[key] !== value)) {
+      $('form-error').textContent = 'Параметры изменились. Выполните подбор заново, чтобы обновить подсказки.';
+      $('form-error').hidden = false;
+      return;
+    }
+    setQuery({...query, ...change, attendance_mode:$('attendance_mode').value});
+    button.textContent = 'Проверяем условия…';
+    try { await run(true); } finally { button.textContent = label; }
+  });
+  recoveryButtons.push(button);
+  return button;
+}
 
 async function parseEvent() {
   if (parsing || busy || !metadata) return;
@@ -142,27 +164,34 @@ function render(result) {
   if (q.brief) $('query-summary').append(el('span','','Пожелания: '+q.brief));
   $('cards').replaceChildren(...result.cards.map(renderCard));
   $('empty-state').hidden = result.cards.length > 0;
-  $('empty-title').textContent = result.status === 'no_category' ? 'Попробуйте другой город' : 'Ни один профиль не проходит все условия';
+  $('empty-title').textContent = result.status === 'no_category' ? 'Попробуйте другой город' : 'По вашим условиям подрядчиков не найдено';
   $('empty-text').textContent = result.status === 'no_category' ? 'В выбранном городе в исходном каталоге нет этой категории. Смена даты или бюджета её не добавит.' : 'Ниже показаны причины. Можно изменить дату, бюджет или другие параметры и повторить подбор.';
   $('audit').hidden = result.status === 'no_category';
   $('audit-count').textContent = result.counts.in_category + ' в городе и категории · ' + result.counts.eligible + ' подходят';
   $('audit-reasons').replaceChildren(...result.rejections.map(r => { const n=el('span','audit-reason');n.append(el('b','',r.count),document.createTextNode(r.label));return n;}));
   $('audit-note').textContent = result.rejections.length ? 'У одного профиля может быть несколько причин отказа. Для выдачи должны выполняться все условия.' : 'Все профили в выбранном городе и категории проходят условия.';
   $('alternatives').replaceChildren();
-  if (result.alternative_dates.length) {
-    $('alternatives').append(el('p','','На соседних датах вариантов больше. Остальные условия сохраняются:'));
+  recoveryButtons = [];
+  if (result.status !== 'no_category' && result.suggested_min_budget > q.budget) {
+    const minimum = result.suggested_min_budget;
+    const option = el('div', 'recovery-option');
+    option.append(el('p','','Увеличьте бюджет минимум на '+money(minimum-q.budget)+' — до '+money(minimum)+'.'),
+      recoveryButton(q, {budget:minimum}, 'Искать с бюджетом '+money(minimum)));
+    $('alternatives').append(option);
+  }
+  if (result.status !== 'no_category' && result.alternative_dates.length) {
     for (const alt of result.alternative_dates) {
-      const button = el('button','secondary',dateText(alt.date)+' · '+alt.count+' подходят');
-      button.type='button';button.addEventListener('click',()=>{if(busy)return;setQuery(q);$('date').value=alt.date;run();});
-      $('alternatives').append(button);
+      const count = alt.count;
+      const noun = {one:'подрядчик',few:'подрядчика',many:'подрядчиков',other:'подрядчика'}[new Intl.PluralRules('ru').select(count)];
+      const option = el('div', 'recovery-option');
+      option.append(el('p','','На '+dateText(alt.date)+(count === 1 ? ' подходит ' : ' подходят ')+count+' '+noun+'.'),
+        recoveryButton(q, {date:alt.date}, 'Проверить эту дату', 'Проверить дату '+dateText(alt.date)));
+      $('alternatives').append(option);
     }
   }
-  if (result.suggested_min_budget) {
-    const button = el('button','secondary','Проверить бюджет '+money(result.suggested_min_budget));
-    button.type='button';button.addEventListener('click',()=>{if(busy)return;setQuery(q);$('budget').value=result.suggested_min_budget;run();});
-    $('alternatives').append(el('p','','При остальных выбранных условиях есть вариант с начальной ценой от '+money(result.suggested_min_budget)+'.'),button);
-  }
   $('alternatives').hidden = !$('alternatives').childElementCount;
+  if (!$('alternatives').hidden) $('alternatives').append(el('p','hint','Изменится только выбранный параметр. Остальные условия поиска сохраняются.'));
+  else if (result.status === 'no_matches') $('empty-text').textContent = 'Проверенных альтернатив по бюджету или соседним датам нет. Посмотрите причины отказа ниже и измените параметры вручную.';
   $('date-change').hidden = true;
   if (previous && comparable(previous.query) === comparable(q) && previous.query.date !== q.date) {
     const nowIds = new Set(result.cards.map(c=>c.id));
@@ -188,6 +217,7 @@ function render(result) {
 async function run(scroll = false) {
   if (busy || !metadata || !form.reportValidity()) return;
   busy=true;
+  recoveryButtons.forEach(button => { button.disabled = true; });
   const sequence=++requestSequence;
   const revision=editRevision;
   $('form-error').hidden=true;
@@ -209,6 +239,7 @@ async function run(scroll = false) {
     $('form-error').hidden=false;
   } finally {
     clearTimeout(timer);busy=false;$('submit').disabled=false;$('submit').replaceChildren(document.createTextNode('Подобрать подрядчиков '),el('span','','↗'));
+    recoveryButtons.forEach(button => { button.disabled = false; });
     document.querySelector('.results-panel').setAttribute('aria-busy','false');
   }
 }
